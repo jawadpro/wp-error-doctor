@@ -37,6 +37,7 @@ final class WPD_Lead_Widget {
         $s = $this->settings();
         if ($s['enabled'] !== '1' || is_admin()) return;
         wp_enqueue_style('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.css', [], self::VERSION);
+        wp_enqueue_style('wpd-widget-fun', plugin_dir_url(__FILE__) . 'assets/widget-fun.css', ['wpd-widget'], self::VERSION);
         wp_enqueue_script('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.js', [], self::VERSION, true);
         wp_localize_script('wpd-widget', 'WPDWidget', [
             'root' => esc_url_raw(rest_url('wp-error-doctor/v1/')),
@@ -96,12 +97,16 @@ final class WPD_Lead_Widget {
         $origin = $parts['scheme'] . '://' . $parts['host'] . (!empty($parts['port']) ? ':' . absint($parts['port']) : '');
         $checks = [['Homepage','/'],['WordPress REST API','/wp-json/'],['Admin path','/wp-admin/'],['Robots','/robots.txt'],['WordPress sitemap','/wp-sitemap.xml']];
         $results = [];
+        $homepage_body = '';
+        $rest_status = 0;
         foreach ($checks as $check) {
             $start = microtime(true);
             $response = wp_safe_remote_get($origin . $check[1], ['timeout' => 8, 'redirection' => 5, 'user-agent' => 'WP-Error-Doctor/1.0']);
             $ms = round((microtime(true) - $start) * 1000);
             if (is_wp_error($response)) { $results[] = ['name'=>$check[0], 'status'=>'ERR', 'time'=>$ms, 'state'=>'critical', 'finding'=>'Connection failed or timed out']; continue; }
             $code = wp_remote_retrieve_response_code($response);
+            if ($check[1] === '/') $homepage_body = strtolower(substr((string) wp_remote_retrieve_body($response), 0, 250000));
+            if ($check[1] === '/wp-json/') $rest_status = $code;
             $admin_hidden = $check[1] === '/wp-admin/' && in_array($code, [401,403,404], true);
             $state = $admin_hidden ? 'neutral' : ($code >= 500 ? 'critical' : ($code >= 400 ? 'warning' : 'healthy'));
             $finding = $admin_hidden ? 'Protected or renamed (inconclusive)' : ($code >= 500 ? 'Server-side error' : ($code >= 400 ? 'Endpoint unavailable' : 'Accessible'));
@@ -109,7 +114,12 @@ final class WPD_Lead_Widget {
         }
         $home = $results[0];
         $id = 'WPD-' . strtoupper(wp_generate_password(7, false, false));
-        return rest_ensure_response(['scan_id'=>$id, 'url'=>esc_url_raw($url), 'online'=>$home['status']==='200', 'results'=>$results]);
+        $host = strtolower(preg_replace('/^www\./', '', $parts['host']));
+        $is_jawad = $host === 'jawadjd.dev';
+        $is_wordpress = $rest_status >= 200 && $rest_status < 400;
+        if (!$is_wordpress && $homepage_body) $is_wordpress = strpos($homepage_body, '/wp-content/') !== false || strpos($homepage_body, '/wp-includes/') !== false || strpos($homepage_body, 'generator" content="wordpress') !== false;
+        $fun_message = $is_jawad ? 'Hey, that’s Jawad’s own website — the doctor is checking its own heartbeat! 🩺' : ((!$is_wordpress && $home['status'] === '200') ? 'Plot twist: this website appears healthy, but it doesn’t look like WordPress. Our stethoscope is tuned for WP sites! 🕵️' : '');
+        return rest_ensure_response(['scan_id'=>$id, 'url'=>esc_url_raw($url), 'online'=>$home['status']==='200', 'is_wordpress'=>$is_wordpress, 'is_jawad'=>$is_jawad, 'fun_message'=>$fun_message, 'results'=>$results]);
     }
 
     public function lead(WP_REST_Request $request) {
