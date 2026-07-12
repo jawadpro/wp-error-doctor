@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor Lead Widget
  * Description: A floating website diagnostic widget that captures qualified WordPress repair leads.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,13 +13,19 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '1.1.0';
+    const VERSION = '1.2.0';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
+        global $wpdb;
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        $table = $wpdb->prefix . 'wpd_leads';
+        $charset = $wpdb->get_charset_collate();
+        dbDelta("CREATE TABLE {$table} (id bigint(20) unsigned NOT NULL AUTO_INCREMENT, email varchar(190) NOT NULL, website_url text NOT NULL, scan_id varchar(32) DEFAULT '', score smallint DEFAULT NULL, status varchar(30) DEFAULT 'pending', report_key varchar(32) DEFAULT '', consent tinyint(1) NOT NULL DEFAULT 0, consent_at datetime DEFAULT NULL, source_url text, created_at datetime NOT NULL, last_contacted_at datetime DEFAULT NULL, PRIMARY KEY (id), KEY email (email), KEY created_at (created_at), KEY status (status)) {$charset};");
         $existing = get_page_by_path('website-diagnostic-report');
         $id = $existing ? $existing->ID : wp_insert_post(['post_title'=>'Website Diagnostic Report','post_name'=>'website-diagnostic-report','post_status'=>'publish','post_type'=>'page','post_content'=>'[wp_error_doctor_report]']);
         if ($id && !is_wp_error($id)) update_option('wpd_report_page_id', (int)$id);
+        update_option('wpd_db_version', self::VERSION);
     }
 
     public function __construct() {
@@ -29,6 +35,7 @@ final class WPD_Lead_Widget {
         add_action('admin_menu', [$this, 'admin_menu']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_init', [$this, 'ensure_report_page']);
+        add_action('admin_post_wpd_follow_up', [$this, 'send_follow_up']);
         add_shortcode('wp_error_doctor_report', [$this, 'report_page']);
     }
 
@@ -41,7 +48,7 @@ final class WPD_Lead_Widget {
         ]);
     }
 
-    public function ensure_report_page() { if (!get_option('wpd_report_page_id')) self::activate(); }
+    public function ensure_report_page() { if (!get_option('wpd_report_page_id') || get_option('wpd_db_version') !== self::VERSION) self::activate(); }
 
     public function assets() {
         $s = $this->settings();
@@ -49,6 +56,7 @@ final class WPD_Lead_Widget {
         wp_enqueue_style('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.css', [], self::VERSION);
         wp_enqueue_style('wpd-widget-fun', plugin_dir_url(__FILE__) . 'assets/widget-fun.css', ['wpd-widget'], self::VERSION);
         wp_enqueue_style('wpd-report', plugin_dir_url(__FILE__) . 'assets/report.css', ['wpd-widget'], self::VERSION);
+        wp_enqueue_style('wpd-marketing', plugin_dir_url(__FILE__) . 'assets/marketing.css', ['wpd-widget'], self::VERSION);
         wp_enqueue_script('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.js', [], self::VERSION, true);
         wp_localize_script('wpd-widget', 'WPDWidget', [
             'root' => esc_url_raw(rest_url('wp-error-doctor/v1/')),
@@ -70,7 +78,7 @@ final class WPD_Lead_Widget {
                     <span class="wpd-kicker">FREE WEBSITE HEALTH CHECK</span>
                     <h2 id="wpd-title"><?php echo esc_html($s['headline']); ?></h2>
                     <p>Run a safe public scan for server errors and common WordPress failures. No login required.</p>
-                    <form class="wpd-scan-form"><label for="wpd-url">Website URL</label><div class="wpd-input"><span>◎</span><input id="wpd-url" type="text" inputmode="url" placeholder="yourwebsite.com" required></div><button type="submit">Scan My Website <span>→</span></button><small>◆ Public checks only. No passwords requested.</small></form>
+                    <form class="wpd-scan-form"><label for="wpd-email">Email address</label><div class="wpd-input"><span>@</span><input id="wpd-email" type="email" autocomplete="email" placeholder="you@company.com" required></div><label for="wpd-url">Website URL</label><div class="wpd-input"><span>◎</span><input id="wpd-url" type="text" inputmode="url" placeholder="yourwebsite.com" required></div><label class="wpd-marketing-consent"><input id="wpd-marketing" type="checkbox" required><span>I agree to receive this report and helpful follow-up about my website from Jawad. I can opt out anytime.</span></label><button type="submit">Scan My Website <span>→</span></button><small>◆ Your details are stored securely for this report and permitted follow-up.</small></form>
                 </div>
                 <div class="wpd-view wpd-progress" hidden><div class="wpd-radar"><i></i><b>⌁</b></div><span class="wpd-kicker">DIAGNOSTIC SCAN</span><h2>Checking your website…</h2><p class="wpd-stage">Validating website URL</p><div class="wpd-progress-line"><i></i></div></div>
                 <div class="wpd-view wpd-result" hidden></div>
@@ -85,7 +93,19 @@ final class WPD_Lead_Widget {
 
     public function routes() {
         register_rest_route('wp-error-doctor/v1', '/scan', ['methods' => 'POST', 'callback' => [$this, 'scan'], 'permission_callback' => '__return_true']);
+        register_rest_route('wp-error-doctor/v1', '/capture', ['methods' => 'POST', 'callback' => [$this, 'capture'], 'permission_callback' => '__return_true']);
         register_rest_route('wp-error-doctor/v1', '/lead', ['methods' => 'POST', 'callback' => [$this, 'lead'], 'permission_callback' => '__return_true']);
+    }
+
+    public function capture(WP_REST_Request $request) {
+        global $wpdb;
+        if ($this->rate_limited('capture', 6)) return new WP_Error('rate_limit', 'Too many requests. Please try again shortly.', ['status'=>429]);
+        $email = sanitize_email((string)$request->get_param('email')); $raw=trim((string)$request->get_param('url')); $consent=(bool)$request->get_param('consent');
+        if (!preg_match('#^https?://#i',$raw)) $raw='https://'.$raw;
+        $url=wp_http_validate_url($raw);
+        if (!is_email($email) || !$url || !$consent) return new WP_Error('invalid_capture','Enter a valid email and public website, then confirm permission.',['status'=>400]);
+        $wpdb->insert($wpdb->prefix.'wpd_leads',['email'=>$email,'website_url'=>esc_url_raw($url),'consent'=>1,'consent_at'=>current_time('mysql'),'source_url'=>esc_url_raw(wp_get_referer()?:home_url('/')),'created_at'=>current_time('mysql')],['%s','%s','%d','%s','%s','%s']);
+        return rest_ensure_response(['lead_id'=>(int)$wpdb->insert_id]);
     }
 
     private function rate_limited($action, $limit = 8) {
@@ -137,7 +157,9 @@ final class WPD_Lead_Widget {
         foreach ($findings as $finding) $counts[$finding['state']]++;
         $score = max(0, min(100, 100 - ($counts['critical'] * 18) - ($counts['warning'] * 6)));
         $report = ['scan_id'=>$id, 'url'=>esc_url_raw($url), 'online'=>$home['status']==='200', 'is_wordpress'=>$is_wordpress, 'is_jawad'=>$is_jawad, 'fun_message'=>$fun_message, 'results'=>$results, 'findings'=>$findings, 'counts'=>$counts, 'score'=>$score, 'scanned_at'=>current_time('mysql')];
-        set_transient('wpd_report_' . strtolower(substr($id, 4)), $report, DAY_IN_SECONDS);
+        $report_key = strtolower(substr($id, 4));
+        set_transient('wpd_report_' . $report_key, $report, DAY_IN_SECONDS);
+        $lead_id=absint($request->get_param('lead_id')); if($lead_id){ global $wpdb; $wpdb->update($wpdb->prefix.'wpd_leads',['scan_id'=>$id,'score'=>$score,'status'=>$home['status']==='200'?'online':'attention','report_key'=>$report_key],['id'=>$lead_id],['%s','%d','%s','%s'],['%d']); }
         $report['report_url'] = add_query_arg('report', strtolower(substr($id, 4)), $this->report_page_url());
         return rest_ensure_response($report);
     }
@@ -202,7 +224,18 @@ final class WPD_Lead_Widget {
         return rest_ensure_response(['success'=>true, 'message'=>'Your report was sent to Jawad. He will contact you soon.']);
     }
 
-    public function admin_menu() { add_options_page('WP Error Doctor', 'WP Error Doctor', 'manage_options', 'wp-error-doctor', [$this, 'settings_page']); }
+    public function admin_menu() { add_menu_page('WP Error Doctor','Error Doctor','manage_options','wp-error-doctor',[$this,'dashboard_page'],'dashicons-heart','58.6'); add_submenu_page('wp-error-doctor','Lead Dashboard','Lead Dashboard','manage_options','wp-error-doctor',[$this,'dashboard_page']); add_submenu_page('wp-error-doctor','Settings','Settings','manage_options','wp-error-doctor-settings',[$this,'settings_page']); }
+
+    public function send_follow_up() {
+        if(!current_user_can('manage_options')) wp_die('Unauthorized'); check_admin_referer('wpd_follow_up'); global $wpdb; $id=absint($_POST['lead_id']??0); $lead=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}wpd_leads WHERE id=%d",$id));
+        if($lead && $lead->consent){ $subject='A quick follow-up about '.wp_parse_url($lead->website_url,PHP_URL_HOST); $body="Hi,\n\nYou recently used WP Error Doctor to scan {$lead->website_url}. I wanted to check whether you need help with any of the findings.\n\nIf you reply to this email, I’ll take a look and suggest the safest next step.\n\nRegards,\nJawad Ilyas\nWordPress Developer"; if(wp_mail($lead->email,$subject,$body)){ $wpdb->update($wpdb->prefix.'wpd_leads',['last_contacted_at'=>current_time('mysql')],['id'=>$id]); } }
+        wp_safe_redirect(admin_url('admin.php?page=wp-error-doctor&followed=1')); exit;
+    }
+
+    public function dashboard_page() { global $wpdb; $table=$wpdb->prefix.'wpd_leads'; $leads=$wpdb->get_results("SELECT * FROM {$table} ORDER BY created_at DESC LIMIT 200"); $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$table}"); $week=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE created_at >= DATE_SUB(NOW(),INTERVAL 7 DAY)"); $attention=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE status='attention'"); $avg=(int)$wpdb->get_var("SELECT AVG(score) FROM {$table} WHERE score IS NOT NULL"); ?>
+    <div class="wpd-admin"><header><div><p>LEAD INTELLIGENCE</p><h1>WP Error Doctor</h1><span>Qualified website diagnostic leads and follow-up activity.</span></div><a href="<?php echo esc_url(home_url('/')); ?>" target="_blank">View website ↗</a></header><?php if(isset($_GET['followed'])):?><div class="wpd-notice">Follow-up email sent successfully.</div><?php endif;?><section class="wpd-stats"><article><span>TOTAL LEADS</span><strong><?php echo $total;?></strong><small>All captured scans</small></article><article><span>LAST 7 DAYS</span><strong><?php echo $week;?></strong><small>Recent opportunities</small></article><article><span>NEEDS ATTENTION</span><strong><?php echo $attention;?></strong><small>Potential repair leads</small></article><article><span>AVG. HEALTH</span><strong><?php echo $avg?:'—';?></strong><small>Across completed scans</small></article></section><section class="wpd-leads"><div class="wpd-table-head"><div><p>LEAD PIPELINE</p><h2>Recent diagnostic leads</h2></div><span><?php echo count($leads);?> shown</span></div><div class="wpd-table"><div class="wpd-tr wpd-th"><span>CONTACT</span><span>WEBSITE</span><span>RESULT</span><span>CAPTURED</span><span>ACTION</span></div><?php if(!$leads):?><div class="wpd-empty-row">No leads yet. Run a test scan from your website.</div><?php endif; foreach($leads as $lead):?><div class="wpd-tr"><span><b><?php echo esc_html($lead->email);?></b><small><?php echo $lead->consent?'✓ Marketing consent':'No consent';?></small></span><span><a href="<?php echo esc_url($lead->website_url);?>" target="_blank"><?php echo esc_html(wp_parse_url($lead->website_url,PHP_URL_HOST));?> ↗</a><small><?php echo esc_html($lead->scan_id?:'Scan pending');?></small></span><span><i class="<?php echo esc_attr($lead->status);?>"><?php echo esc_html(strtoupper($lead->status));?></i><small><?php echo $lead->score!==null?'Health score '.$lead->score:'Awaiting report';?></small></span><span><?php echo esc_html(human_time_diff(strtotime($lead->created_at),current_time('timestamp')));?> ago<small><?php echo $lead->last_contacted_at?'Contacted '.human_time_diff(strtotime($lead->last_contacted_at),current_time('timestamp')).' ago':'Not contacted';?></small></span><span class="wpd-actions"><?php if($lead->report_key):?><a href="<?php echo esc_url(add_query_arg('report',$lead->report_key,$this->report_page_url()));?>" target="_blank">Report</a><?php endif;?><form method="post" action="<?php echo esc_url(admin_url('admin-post.php'));?>"><?php wp_nonce_field('wpd_follow_up');?><input type="hidden" name="action" value="wpd_follow_up"><input type="hidden" name="lead_id" value="<?php echo absint($lead->id);?>"><button <?php disabled(!$lead->consent);?>>Follow up</button></form></span></div><?php endforeach;?></div></section></div><?php $this->admin_css(); }
+
+    private function admin_css(){?><style>.wpd-admin{margin:0 0 0 -20px;min-height:100vh;padding:42px;background:#05070d;color:#f8fafc;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wpd-admin *{box-sizing:border-box}.wpd-admin header{display:flex;justify-content:space-between;align-items:end;max-width:1400px}.wpd-admin header p,.wpd-table-head p{font:10px ui-monospace,monospace;letter-spacing:.14em;color:#22d3ee;margin:0}.wpd-admin h1{color:#f8fafc;font-size:44px;letter-spacing:-.05em;margin:8px 0}.wpd-admin header span{color:#94a3b8}.wpd-admin header>a{border:1px solid #29485d;padding:12px 16px;color:#c7d7e2;text-decoration:none}.wpd-notice{margin-top:20px;border:1px solid #236552;background:#092019;padding:13px;color:#34d399}.wpd-stats{max-width:1400px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:38px 0}.wpd-stats article{border:1px solid #1d3144;background:#0b1220;padding:23px}.wpd-stats span{font:9px ui-monospace,monospace;color:#7f91a1}.wpd-stats strong{display:block;font-size:34px;color:#f8fafc;margin:12px 0}.wpd-stats small{color:#66788a}.wpd-leads{max-width:1400px;border:1px solid #1d3144;background:#0b1220}.wpd-table-head{display:flex;justify-content:space-between;align-items:center;padding:22px;border-bottom:1px solid #1d3144}.wpd-table-head h2{color:#f8fafc;margin:5px 0}.wpd-table-head>span{color:#6f8190}.wpd-tr{display:grid;grid-template-columns:1.4fr 1.2fr .8fr .9fr 1fr;gap:18px;align-items:center;padding:16px 20px;border-bottom:1px solid #152536}.wpd-th{font:9px ui-monospace,monospace;color:#6e8191}.wpd-tr span{color:#c7d2da;font-size:12px;min-width:0}.wpd-tr b,.wpd-tr small{display:block}.wpd-tr small{color:#687b8b;font-size:9px;margin-top:5px}.wpd-tr a{color:#22d3ee;text-decoration:none}.wpd-tr i{font:9px ui-monospace,monospace;font-style:normal;padding:5px 7px;border:1px solid #35516a}.wpd-tr i.online{color:#34d399;border-color:#235e4c}.wpd-tr i.attention{color:#fb7185;border-color:#63303b}.wpd-actions{display:flex;gap:6px}.wpd-actions form{margin:0}.wpd-actions a,.wpd-actions button{display:inline-block;border:1px solid #29485d;background:transparent;color:#c9d6df!important;padding:7px 9px;font-size:10px;cursor:pointer}.wpd-empty-row{padding:45px;text-align:center;color:#718291}@media(max-width:1000px){.wpd-stats{grid-template-columns:1fr 1fr}.wpd-table{overflow-x:auto}.wpd-tr{min-width:950px}}</style><?php }
     public function register_settings() {
         register_setting('wpd_settings', self::OPTION, ['sanitize_callback'=>function($v){ return [
             'enabled'=>!empty($v['enabled'])?'1':'0', 'email'=>sanitize_email($v['email']??''), 'accent'=>sanitize_hex_color($v['accent']??'')?:'#22d3ee',

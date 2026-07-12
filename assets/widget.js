@@ -10,7 +10,7 @@
     e.preventDefault(); show('progress');
     const stages=['Validating website URL','Checking server response','Testing WordPress endpoints','Preparing your report']; let i=0;
     const ticker=setInterval(()=>{ if(i<stages.length) root.querySelector('.wpd-stage').textContent=stages[i++]; },650);
-    try { const res=await fetch(WPDWidget.root+'scan',{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':WPDWidget.nonce},body:JSON.stringify({url:root.querySelector('#wpd-url').value})}); const data=await res.json(); if(!res.ok) throw new Error(data.message); report=data; render(data); }
+    try { const url=root.querySelector('#wpd-url').value, email=root.querySelector('#wpd-email').value, consent=root.querySelector('#wpd-marketing').checked; const captured=await fetch(WPDWidget.root+'capture',{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':WPDWidget.nonce},body:JSON.stringify({url,email,consent})}); const lead=await captured.json(); if(!captured.ok) throw new Error(lead.message); const res=await fetch(WPDWidget.root+'scan',{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':WPDWidget.nonce},body:JSON.stringify({url,lead_id:lead.lead_id})}); const data=await res.json(); if(!res.ok) throw new Error(data.message); report=data; render(data); }
     catch(err){ renderError(err.message||'The scan could not be completed.'); } finally { clearInterval(ticker); }
   });
   function render(data){

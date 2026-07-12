@@ -4,7 +4,7 @@ Tags: diagnostics, lead generation, wordpress errors, website scanner
 Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 
 A floating public website diagnostic widget that turns WordPress error checks into qualified repair leads.
@@ -24,6 +24,11 @@ The scanner uses WordPress safe HTTP requests, never requests credentials, does 
 5. Confirm that WordPress email delivery is configured with SMTP.
 
 == Changelog ==
+
+= 1.2.0 =
+* Added consent-based email capture before scanning.
+* Added persistent lead database and branded analytics dashboard.
+* Added lead status, report links, health scores, and follow-up email actions.
 
 = 1.1.0 =
 * Added responsive-readiness, performance, security, SEO, and error-signature checks.
