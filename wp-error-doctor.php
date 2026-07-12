@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor Lead Widget
  * Description: A floating website diagnostic widget that captures qualified WordPress repair leads.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,8 +13,14 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '1.0.0';
+    const VERSION = '1.1.0';
     const OPTION = 'wpd_widget_settings';
+
+    public static function activate() {
+        $existing = get_page_by_path('website-diagnostic-report');
+        $id = $existing ? $existing->ID : wp_insert_post(['post_title'=>'Website Diagnostic Report','post_name'=>'website-diagnostic-report','post_status'=>'publish','post_type'=>'page','post_content'=>'[wp_error_doctor_report]']);
+        if ($id && !is_wp_error($id)) update_option('wpd_report_page_id', (int)$id);
+    }
 
     public function __construct() {
         add_action('wp_enqueue_scripts', [$this, 'assets']);
@@ -22,6 +28,8 @@ final class WPD_Lead_Widget {
         add_action('rest_api_init', [$this, 'routes']);
         add_action('admin_menu', [$this, 'admin_menu']);
         add_action('admin_init', [$this, 'register_settings']);
+        add_action('admin_init', [$this, 'ensure_report_page']);
+        add_shortcode('wp_error_doctor_report', [$this, 'report_page']);
     }
 
     public function settings() {
@@ -33,11 +41,14 @@ final class WPD_Lead_Widget {
         ]);
     }
 
+    public function ensure_report_page() { if (!get_option('wpd_report_page_id')) self::activate(); }
+
     public function assets() {
         $s = $this->settings();
         if ($s['enabled'] !== '1' || is_admin()) return;
         wp_enqueue_style('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.css', [], self::VERSION);
         wp_enqueue_style('wpd-widget-fun', plugin_dir_url(__FILE__) . 'assets/widget-fun.css', ['wpd-widget'], self::VERSION);
+        wp_enqueue_style('wpd-report', plugin_dir_url(__FILE__) . 'assets/report.css', ['wpd-widget'], self::VERSION);
         wp_enqueue_script('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.js', [], self::VERSION, true);
         wp_localize_script('wpd-widget', 'WPDWidget', [
             'root' => esc_url_raw(rest_url('wp-error-doctor/v1/')),
@@ -98,6 +109,8 @@ final class WPD_Lead_Widget {
         $checks = [['Homepage','/'],['WordPress REST API','/wp-json/'],['Admin path','/wp-admin/'],['Robots','/robots.txt'],['WordPress sitemap','/wp-sitemap.xml']];
         $results = [];
         $homepage_body = '';
+        $homepage_headers = [];
+        $homepage_time = 0;
         $rest_status = 0;
         foreach ($checks as $check) {
             $start = microtime(true);
@@ -105,7 +118,7 @@ final class WPD_Lead_Widget {
             $ms = round((microtime(true) - $start) * 1000);
             if (is_wp_error($response)) { $results[] = ['name'=>$check[0], 'status'=>'ERR', 'time'=>$ms, 'state'=>'critical', 'finding'=>'Connection failed or timed out']; continue; }
             $code = wp_remote_retrieve_response_code($response);
-            if ($check[1] === '/') $homepage_body = strtolower(substr((string) wp_remote_retrieve_body($response), 0, 250000));
+            if ($check[1] === '/') { $homepage_body = strtolower(substr((string) wp_remote_retrieve_body($response), 0, 500000)); $homepage_headers = wp_remote_retrieve_headers($response); $homepage_time = $ms; }
             if ($check[1] === '/wp-json/') $rest_status = $code;
             $admin_hidden = $check[1] === '/wp-admin/' && in_array($code, [401,403,404], true);
             $state = $admin_hidden ? 'neutral' : ($code >= 500 ? 'critical' : ($code >= 400 ? 'warning' : 'healthy'));
@@ -119,7 +132,58 @@ final class WPD_Lead_Widget {
         $is_wordpress = $rest_status >= 200 && $rest_status < 400;
         if (!$is_wordpress && $homepage_body) $is_wordpress = strpos($homepage_body, '/wp-content/') !== false || strpos($homepage_body, '/wp-includes/') !== false || strpos($homepage_body, 'generator" content="wordpress') !== false;
         $fun_message = $is_jawad ? 'Hey, that’s Jawad’s own website — the doctor is checking its own heartbeat! 🩺' : ((!$is_wordpress && $home['status'] === '200') ? 'Plot twist: this website appears healthy, but it doesn’t look like WordPress. Our stethoscope is tuned for WP sites! 🕵️' : '');
-        return rest_ensure_response(['scan_id'=>$id, 'url'=>esc_url_raw($url), 'online'=>$home['status']==='200', 'is_wordpress'=>$is_wordpress, 'is_jawad'=>$is_jawad, 'fun_message'=>$fun_message, 'results'=>$results]);
+        $findings = $this->analyze_page($homepage_body, $homepage_headers, $homepage_time, $parts['scheme']);
+        $counts = ['critical'=>0,'warning'=>0,'passed'=>0];
+        foreach ($findings as $finding) $counts[$finding['state']]++;
+        $score = max(0, min(100, 100 - ($counts['critical'] * 18) - ($counts['warning'] * 6)));
+        $report = ['scan_id'=>$id, 'url'=>esc_url_raw($url), 'online'=>$home['status']==='200', 'is_wordpress'=>$is_wordpress, 'is_jawad'=>$is_jawad, 'fun_message'=>$fun_message, 'results'=>$results, 'findings'=>$findings, 'counts'=>$counts, 'score'=>$score, 'scanned_at'=>current_time('mysql')];
+        set_transient('wpd_report_' . strtolower(substr($id, 4)), $report, DAY_IN_SECONDS);
+        $report['report_url'] = add_query_arg('report', strtolower(substr($id, 4)), $this->report_page_url());
+        return rest_ensure_response($report);
+    }
+
+    private function analyze_page($html, $headers, $time, $scheme) {
+        $has = function($needle) use ($html) { return strpos($html, $needle) !== false; };
+        $header = function($name) use ($headers) { return is_object($headers) ? $headers->offsetGet($name) : ($headers[$name] ?? ''); };
+        $count = function($pattern) use ($html) { preg_match_all($pattern, $html, $m); return count($m[0]); };
+        $items = [];
+        $add = function($category,$title,$state,$detail,$action='') use (&$items){ $items[]=['category'=>$category,'title'=>$title,'state'=>$state,'detail'=>$detail,'action'=>$action]; };
+        $add('Responsive','Mobile viewport',$has('name="viewport') || $has("name='viewport")?'passed':'critical',$has('name="viewport') || $has("name='viewport")?'A mobile viewport is configured.':'No mobile viewport tag was detected.','Add a responsive viewport meta tag and test key templates on mobile.');
+        $add('Responsive','Fixed-width risk',preg_match('/width\s*[:=]\s*["\']?[1-9][0-9]{3,}px/', $html)?'warning':'passed',preg_match('/width\s*[:=]\s*["\']?[1-9][0-9]{3,}px/', $html)?'Large fixed pixel widths may cause horizontal scrolling.':'No obvious large fixed-width markup was found.','Review the page at 375px, 768px, and 1440px widths.');
+        $size = strlen($html); $scripts=$count('/<script\b/i'); $styles=$count('/<link[^>]+stylesheet/i'); $images=$count('/<img\b/i');
+        $add('Performance','Server response',$time > 2000?'critical':($time>900?'warning':'passed'),"Homepage responded in {$time} ms.",'Investigate hosting, caching, database queries, and slow plugins.');
+        $add('Performance','HTML document size',$size>300000?'warning':'passed','The public HTML document is ' . size_format($size) . '.','Reduce excessive page-builder markup and unused page content.');
+        $add('Performance','Frontend requests',$scripts+$styles>35?'warning':'passed',"Detected {$scripts} scripts and {$styles} stylesheets in page markup.",'Remove unused assets and delay non-critical scripts.');
+        $add('Performance','Image markup',$images>40?'warning':'passed',"Detected {$images} images on the homepage.",'Compress images, use modern formats, and lazy-load below the fold.');
+        $add('Security','HTTPS',$scheme==='https'?'passed':'critical',$scheme==='https'?'The submitted page uses HTTPS.':'The submitted page does not use HTTPS.','Install SSL and redirect all HTTP traffic to HTTPS.');
+        $mixed = $scheme==='https' && preg_match('#(?:src|href)=["\']http://#i',$html);
+        $add('Security','Mixed content',$mixed?'critical':'passed',$mixed?'Insecure HTTP asset references were found on an HTTPS page.':'No obvious mixed-content asset references were found.','Replace HTTP asset URLs with HTTPS.');
+        foreach ([['Content security policy','content-security-policy'],['Clickjacking protection','x-frame-options'],['Content type protection','x-content-type-options']] as $h) $add('Security',$h[0],$header($h[1])?'passed':'warning',$header($h[1])?'Header detected.':'Recommended security header was not detected.','Ask your developer or host to review security headers.');
+        $add('SEO','Page title',preg_match('/<title[^>]*>\s*[^<]{10,}/i',$html)?'passed':'warning',preg_match('/<title[^>]*>\s*[^<]{10,}/i',$html)?'A descriptive title appears to be present.':'The page title is missing or unusually short.','Write a unique, descriptive title for the homepage.');
+        $add('SEO','Meta description',$has('name="description') || $has("name='description")?'passed':'warning',$has('name="description') || $has("name='description")?'A meta description was detected.':'No meta description was detected.','Add a clear search description that explains the service.');
+        $add('SEO','Canonical URL',$has('rel="canonical') || $has("rel='canonical")?'passed':'warning',$has('rel="canonical') || $has("rel='canonical")?'A canonical URL was detected.':'No canonical URL was detected.','Add a self-referencing canonical URL.');
+        $add('SEO','Primary heading',$count('/<h1\b/i')===1?'passed':'warning','Detected ' . $count('/<h1\b/i') . ' H1 headings.','Use one clear primary heading per page.');
+        $add('WordPress','Public error signatures',preg_match('/critical error|error establishing a database connection|allowed memory size exhausted|fatal error|maximum execution time exceeded/i',$html)?'critical':'passed',preg_match('/critical error|error establishing a database connection|allowed memory size exhausted|fatal error|maximum execution time exceeded/i',$html)?'A public WordPress or PHP error signature was detected.':'No common public fatal-error signature was found.','Review PHP and WordPress debug logs before changing plugins.');
+        return $items;
+    }
+
+    private function report_page_url() { $id=(int)get_option('wpd_report_page_id'); return $id ? get_permalink($id) : home_url('/website-diagnostic-report/'); }
+
+    public function report_page() {
+        $key = isset($_GET['report']) ? sanitize_key(wp_unslash($_GET['report'])) : '';
+        $r = $key ? get_transient('wpd_report_' . $key) : false;
+        wp_enqueue_style('wpd-report', plugin_dir_url(__FILE__) . 'assets/report.css', [], self::VERSION);
+        if (!$r) return '<div class="wpd-full wpd-empty"><p class="wpd-label">WP ERROR DOCTOR</p><h1>This report has expired.</h1><p>Diagnostic reports remain available for 24 hours. Please run a new scan.</p></div>';
+        ob_start(); ?>
+        <main class="wpd-full"><header class="wpd-report-head"><div><p class="wpd-label">WEBSITE DIAGNOSTIC REPORT</p><h1><?php echo esc_html(wp_parse_url($r['url'], PHP_URL_HOST)); ?></h1><p><?php echo esc_html($r['scan_id']); ?> · <?php echo esc_html($r['scanned_at']); ?></p></div><div class="wpd-score"><strong><?php echo absint($r['score']); ?></strong><span>HEALTH SCORE</span></div></header>
+        <section class="wpd-report-status <?php echo $r['online']?'good':'bad'; ?>"><span><?php echo $r['online']?'✓':'!'; ?></span><div><p class="wpd-label">OVERALL STATUS</p><h2><?php echo $r['online']?'Website is online':'Website needs attention'; ?></h2><p><?php echo $r['online']?'The homepage is publicly accessible. Review the opportunities below for improvements.':'The homepage did not respond successfully and may require urgent investigation.'; ?></p></div></section>
+        <div class="wpd-summary"><div><strong><?php echo absint($r['counts']['critical']); ?></strong><span>Critical</span></div><div><strong><?php echo absint($r['counts']['warning']); ?></strong><span>Recommended</span></div><div><strong><?php echo absint($r['counts']['passed']); ?></strong><span>Passed</span></div></div>
+        <?php foreach (['Responsive','Performance','Security','SEO','WordPress'] as $category): $group=array_filter($r['findings'],function($f)use($category){return $f['category']===$category;}); ?>
+        <section class="wpd-report-section"><div class="wpd-section-title"><p class="wpd-label">PUBLIC CHECK</p><h2><?php echo esc_html($category); ?></h2></div><div class="wpd-findings"><?php foreach($group as $f): ?><article><i class="<?php echo esc_attr($f['state']); ?>"><?php echo $f['state']==='passed'?'✓':($f['state']==='critical'?'!':'•'); ?></i><div><h3><?php echo esc_html($f['title']); ?></h3><p><?php echo esc_html($f['detail']); ?></p><?php if($f['state']!=='passed' && $f['action']): ?><small>RECOMMENDED: <?php echo esc_html($f['action']); ?></small><?php endif; ?></div><b><?php echo esc_html(strtoupper($f['state'])); ?></b></article><?php endforeach; ?></div></section>
+        <?php endforeach; ?>
+        <section class="wpd-report-cta"><div><p class="wpd-label">WORDPRESS DEVELOPER · 10+ YEARS EXPERIENCE</p><h2>Want Jawad to fix these issues?</h2><p>Send this report for a careful, professional review. No passwords are needed to start.</p></div><a href="<?php echo esc_url(home_url('/#contact')); ?>">Send Report to Jawad →</a></section>
+        <p class="wpd-disclaimer">This report uses public website signals and does not confirm private backend causes. Visual responsive testing requires rendered browser checks.</p></main>
+        <?php return ob_get_clean();
     }
 
     public function lead(WP_REST_Request $request) {
@@ -154,4 +218,5 @@ final class WPD_Lead_Widget {
         <tr><th>Headline</th><td><input class="large-text" name="<?php echo self::OPTION; ?>[headline]" value="<?php echo esc_attr($s['headline']); ?>"></td></tr>
         </table><?php submit_button(); ?></form></div><?php }
 }
+register_activation_hook(__FILE__, ['WPD_Lead_Widget', 'activate']);
 new WPD_Lead_Widget();
