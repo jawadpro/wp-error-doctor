@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor Lead Widget
  * Description: A floating website diagnostic widget that captures qualified WordPress repair leads.
- * Version: 1.2.2
+ * Version: 1.2.3
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '1.2.2';
+    const VERSION = '1.2.3';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -161,7 +161,7 @@ final class WPD_Lead_Widget {
         $report = ['scan_id'=>$id, 'url'=>esc_url_raw($url), 'online'=>$home['status']==='200', 'is_wordpress'=>$is_wordpress, 'is_jawad'=>$is_jawad, 'fun_message'=>$fun_message, 'results'=>$results, 'findings'=>$findings, 'counts'=>$counts, 'score'=>$score, 'scanned_at'=>current_time('mysql')];
         $report_key = strtolower(substr($id, 4));
         set_transient('wpd_report_' . $report_key, $report, DAY_IN_SECONDS);
-        $lead_id=absint($request->get_param('lead_id')); if($lead_id){ global $wpdb; $wpdb->update($wpdb->prefix.'wpd_leads',['scan_id'=>$id,'score'=>$score,'status'=>$home['status']==='200'?'online':'attention','report_key'=>$report_key],['id'=>$lead_id],['%s','%d','%s','%s'],['%d']); $this->email_scan_report($lead_id,$report,$report_key); }
+        $lead_id=absint($request->get_param('lead_id')); if($lead_id){ global $wpdb; $wpdb->update($wpdb->prefix.'wpd_leads',['scan_id'=>$id,'score'=>$score,'status'=>$home['status']==='200'?'online':'attention','report_key'=>$report_key],['id'=>$lead_id],['%s','%d','%s','%s'],['%d']); }
         $report['report_url'] = add_query_arg('report', strtolower(substr($id, 4)), $this->report_page_url());
         return rest_ensure_response($report);
     }
@@ -228,7 +228,7 @@ final class WPD_Lead_Widget {
         $subject = sprintf('WordPress repair lead: %s', sanitize_text_field($report['url'] ?? 'Website report'));
         $body = "New WP Error Doctor lead\n\nName: {$name}\nEmail: {$email}\nWebsite: " . esc_url_raw($report['url'] ?? '') . "\nScan ID: " . sanitize_text_field($report['scan_id'] ?? '') . "\n\nMessage:\n{$message}\n\nPublic scan:\n";
         foreach (($report['results'] ?? []) as $row) $body .= sanitize_text_field($row['name'] ?? '') . ': HTTP ' . sanitize_text_field($row['status'] ?? '') . ' — ' . sanitize_text_field($row['finding'] ?? '') . "\n";
-        $sent = wp_mail(sanitize_email($s['email']), $subject, $body, ['Reply-To: ' . $name . ' <' . $email . '>']);
+        $sent = wp_mail('jawad.productions@gmail.com', $subject, $body, ['Reply-To: ' . $name . ' <' . $email . '>']);
         if (!$sent) return new WP_Error('mail_failed', 'The report could not be sent. Please contact Jawad directly.', ['status'=>500]);
         return rest_ensure_response(['success'=>true, 'message'=>'Your report was sent to Jawad. He will contact you soon.']);
     }
