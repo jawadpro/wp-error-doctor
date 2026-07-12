@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor Lead Widget
  * Description: A floating website diagnostic widget that captures qualified WordPress repair leads.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '1.2.0';
+    const VERSION = '1.2.1';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -78,7 +78,7 @@ final class WPD_Lead_Widget {
                     <span class="wpd-kicker">FREE WEBSITE HEALTH CHECK</span>
                     <h2 id="wpd-title"><?php echo esc_html($s['headline']); ?></h2>
                     <p>Run a safe public scan for server errors and common WordPress failures. No login required.</p>
-                    <form class="wpd-scan-form"><label for="wpd-email">Email address</label><div class="wpd-input"><span>@</span><input id="wpd-email" type="email" autocomplete="email" placeholder="you@company.com" required></div><label for="wpd-url">Website URL</label><div class="wpd-input"><span>◎</span><input id="wpd-url" type="text" inputmode="url" placeholder="yourwebsite.com" required></div><label class="wpd-marketing-consent"><input id="wpd-marketing" type="checkbox" required><span>I agree to receive this report and helpful follow-up about my website from Jawad. I can opt out anytime.</span></label><button type="submit">Scan My Website <span>→</span></button><small>◆ Your details are stored securely for this report and permitted follow-up.</small></form>
+                    <form class="wpd-scan-form"><div class="wpd-primary-field"><label for="wpd-url">Website to diagnose</label><div class="wpd-input wpd-url-input"><span>◎</span><input id="wpd-url" type="text" inputmode="url" placeholder="yourwebsite.com" required></div><small>Enter the WordPress website experiencing problems.</small></div><div class="wpd-secondary-field"><label for="wpd-email">Where should we send the report?</label><div class="wpd-input"><span>@</span><input id="wpd-email" type="email" autocomplete="email" placeholder="you@company.com" required></div></div><label class="wpd-marketing-consent"><input id="wpd-marketing" type="checkbox" required><i aria-hidden="true">✓</i><span><b>Yes, send me the diagnostic report</b><small>I agree to receive this report and helpful follow-up from Jawad about my website. I can opt out anytime.</small></span></label><button type="submit">Diagnose My Website <span>→</span></button><small>◆ Secure public scan. No passwords or private data requested.</small></form>
                 </div>
                 <div class="wpd-view wpd-progress" hidden><div class="wpd-radar"><i></i><b>⌁</b></div><span class="wpd-kicker">DIAGNOSTIC SCAN</span><h2>Checking your website…</h2><p class="wpd-stage">Validating website URL</p><div class="wpd-progress-line"><i></i></div></div>
                 <div class="wpd-view wpd-result" hidden></div>
