@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor
  * Description: An SEO-ready WordPress security, speed, and website health checker with lead capture.
- * Version: 2.3.4
+ * Version: 2.4.0
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '2.3.4';
+    const VERSION = '2.4.0';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -77,6 +77,7 @@ final class WPD_Lead_Widget {
         wp_enqueue_style('wpd-page-v3', plugin_dir_url(__FILE__) . 'assets/page-v3.css', ['wpd-page-premium'], self::VERSION);
         wp_enqueue_style('wpd-page-v4', plugin_dir_url(__FILE__) . 'assets/page-v4.css', ['wpd-page-v3'], self::VERSION);
         wp_enqueue_style('wpd-page-readable', plugin_dir_url(__FILE__) . 'assets/page-readable.css', ['wpd-page-v4'], self::VERSION);
+        wp_enqueue_style('wpd-multistep', plugin_dir_url(__FILE__) . 'assets/multistep.css', ['wpd-page-readable'], self::VERSION);
         wp_enqueue_script('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.js', [], self::VERSION, true);
         if ($s['chat_enabled'] === '1') { wp_enqueue_style('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.css', [], self::VERSION); wp_enqueue_style('wpd-chat-enhance', plugin_dir_url(__FILE__) . 'assets/chat-enhance.css', ['wpd-chat'], self::VERSION); wp_enqueue_style('wpd-chat-readable', plugin_dir_url(__FILE__) . 'assets/chat-readable.css', ['wpd-chat-enhance'], self::VERSION); wp_enqueue_script('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.js', [], self::VERSION, true); }
         wp_localize_script('wpd-widget', 'WPDWidget', [
@@ -102,7 +103,7 @@ final class WPD_Lead_Widget {
                     <h2 id="wpd-title"><?php echo esc_html($s['headline']); ?></h2>
                     <p>Run a safe public scan for server errors and common WordPress failures. No login required.</p>
                     <input id="wpd-marketing" type="checkbox" checked hidden>
-                    <form class="wpd-scan-form"><div class="wpd-primary-field"><label for="wpd-url">Enter your WordPress website</label><div class="wpd-input wpd-url-input"><span>◎</span><input id="wpd-url" type="text" inputmode="url" placeholder="yourwebsite.com" required></div><small>We’ll check the public website for errors and common issues.</small></div><div class="wpd-secondary-field"><label for="wpd-email">Your email <em>Required to start diagnosis</em></label><div class="wpd-input wpd-email-input"><span>@</span><input id="wpd-email" type="email" autocomplete="email" placeholder="you@company.com" required></div><small>Used to save your scan and contact you about relevant website help. You can opt out anytime.</small></div><button type="submit">Start Free Diagnosis <span>→</span></button><small>◆ Secure public scan. No passwords or private data requested.</small></form>
+                    <form class="wpd-scan-form"><div class="wpd-step-head"><span class="is-active">1</span><i></i><span>2</span><b>Website</b><b>Email</b></div><div class="wpd-form-step wpd-step-url"><div class="wpd-primary-field"><label for="wpd-url">Enter your WordPress website</label><div class="wpd-input wpd-url-input"><span>◎</span><input id="wpd-url" type="text" inputmode="url" placeholder="yourwebsite.com" required></div><small>We’ll check the public website for errors and common issues.</small></div><button class="wpd-next-step" type="button">Continue <span>→</span></button></div><div class="wpd-form-step wpd-step-email" hidden><button class="wpd-step-back" type="button">← Change website</button><div class="wpd-selected-site"><small>WEBSITE TO DIAGNOSE</small><b></b></div><div class="wpd-secondary-field"><label for="wpd-email">Your email <em>Required to start diagnosis</em></label><div class="wpd-input wpd-email-input"><span>@</span><input id="wpd-email" type="email" autocomplete="email" placeholder="you@company.com" required></div><small>Used to save your scan and contact you about relevant website help. You can opt out anytime.</small></div><button type="submit">Start Free Diagnosis <span>→</span></button></div><small>◆ Secure public scan. No passwords or private data requested.</small></form>
                 </div>
                 <div class="wpd-view wpd-progress" hidden><div class="wpd-radar"><i></i><b>⌁</b></div><span class="wpd-kicker">DIAGNOSTIC SCAN</span><h2>Checking your website…</h2><p class="wpd-stage">Validating website URL</p><div class="wpd-progress-line"><i></i></div></div>
                 <div class="wpd-view wpd-result" hidden></div>

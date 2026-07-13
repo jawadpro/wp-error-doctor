@@ -3,6 +3,9 @@
   const dialog = root.querySelector('.wpd-dialog'), launch = root.querySelector('.wpd-launch');
   const views = ['start','progress','result','lead']; let report = null;
   const show = name => views.forEach(v => root.querySelector('.wpd-'+v).hidden = v !== name);
+  const urlStep=root.querySelector('.wpd-step-url'), emailStep=root.querySelector('.wpd-step-email'), stepDots=root.querySelectorAll('.wpd-step-head span');
+  root.querySelector('.wpd-next-step')?.addEventListener('click',()=>{const field=root.querySelector('#wpd-url');if(!field.value.trim()){field.focus();field.reportValidity();return;}urlStep.hidden=true;emailStep.hidden=false;root.querySelector('.wpd-selected-site b').textContent=field.value.trim();stepDots[0].classList.remove('is-active');stepDots[0].classList.add('is-done');stepDots[1].classList.add('is-active');root.querySelector('#wpd-email').focus();});
+  root.querySelector('.wpd-step-back')?.addEventListener('click',()=>{emailStep.hidden=true;urlStep.hidden=false;stepDots[1].classList.remove('is-active');stepDots[0].classList.remove('is-done');stepDots[0].classList.add('is-active');root.querySelector('#wpd-url').focus();});
   if (launch) launch.addEventListener('click', () => { dialog.hidden = !dialog.hidden; launch.setAttribute('aria-expanded', String(!dialog.hidden)); });
   root.querySelector('.wpd-close').addEventListener('click', () => dialog.hidden = true);
   root.querySelector('.wpd-back').addEventListener('click', () => show('result'));
