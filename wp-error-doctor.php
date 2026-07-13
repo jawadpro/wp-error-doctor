@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: WP Error Doctor Lead Widget
- * Description: A floating website diagnostic widget that captures qualified WordPress repair leads.
- * Version: 1.2.3
+ * Plugin Name: WP Error Doctor
+ * Description: An SEO-ready WordPress security, speed, and website health checker with lead capture.
+ * Version: 2.0.0
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '1.2.3';
+    const VERSION = '2.0.0';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -25,6 +25,10 @@ final class WPD_Lead_Widget {
         $existing = get_page_by_path('website-diagnostic-report');
         $id = $existing ? $existing->ID : wp_insert_post(['post_title'=>'Website Diagnostic Report','post_name'=>'website-diagnostic-report','post_status'=>'publish','post_type'=>'page','post_content'=>'[wp_error_doctor_report]']);
         if ($id && !is_wp_error($id)) update_option('wpd_report_page_id', (int)$id);
+        $scanner = get_page_by_path('wordpress-website-health-check');
+        $scanner_id = $scanner ? $scanner->ID : wp_insert_post(['post_title'=>'Free WordPress Website Security & Speed Check','post_name'=>'wordpress-website-health-check','post_status'=>'publish','post_type'=>'page','post_content'=>'[wp_error_doctor_scanner]']);
+        if ($scanner_id && !is_wp_error($scanner_id)) update_option('wpd_scanner_page_id', (int)$scanner_id);
+        $settings = get_option(self::OPTION, []); $settings['enabled'] = '0'; update_option(self::OPTION, $settings);
         update_option('wpd_db_version', self::VERSION);
     }
 
@@ -37,11 +41,14 @@ final class WPD_Lead_Widget {
         add_action('admin_init', [$this, 'ensure_report_page']);
         add_action('admin_post_wpd_follow_up', [$this, 'send_follow_up']);
         add_shortcode('wp_error_doctor_report', [$this, 'report_page']);
+        add_shortcode('wp_error_doctor_scanner', [$this, 'scanner_page']);
+        add_filter('document_title_parts', [$this, 'seo_title']);
+        add_action('wp_head', [$this, 'seo_head']);
     }
 
     public function settings() {
         return wp_parse_args(get_option(self::OPTION, []), [
-            'enabled' => '1', 'email' => 'jawad.productions@gmail.com',
+            'enabled' => '0', 'email' => 'jawad.productions@gmail.com',
             'accent' => '#22d3ee', 'position' => 'right',
             'button_text' => 'Diagnose My Website',
             'headline' => 'Is your WordPress site having problems?',
@@ -52,12 +59,15 @@ final class WPD_Lead_Widget {
 
     public function assets() {
         $s = $this->settings();
-        if ($s['enabled'] !== '1' || is_admin()) return;
+        $scanner_page = (int)get_option('wpd_scanner_page_id');
+        $report_page = (int)get_option('wpd_report_page_id');
+        if (($s['enabled'] !== '1' && !is_page($scanner_page) && !is_page($report_page)) || is_admin()) return;
         wp_enqueue_style('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.css', [], self::VERSION);
         wp_enqueue_style('wpd-widget-fun', plugin_dir_url(__FILE__) . 'assets/widget-fun.css', ['wpd-widget'], self::VERSION);
         wp_enqueue_style('wpd-report', plugin_dir_url(__FILE__) . 'assets/report.css', ['wpd-widget'], self::VERSION);
         wp_enqueue_style('wpd-marketing', plugin_dir_url(__FILE__) . 'assets/marketing.css', ['wpd-widget'], self::VERSION);
         wp_enqueue_style('wpd-form-v2', plugin_dir_url(__FILE__) . 'assets/form-v2.css', ['wpd-marketing'], self::VERSION);
+        wp_enqueue_style('wpd-page', plugin_dir_url(__FILE__) . 'assets/page.css', ['wpd-form-v2'], self::VERSION);
         wp_enqueue_script('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.js', [], self::VERSION, true);
         wp_localize_script('wpd-widget', 'WPDWidget', [
             'root' => esc_url_raw(rest_url('wp-error-doctor/v1/')),
@@ -67,13 +77,14 @@ final class WPD_Lead_Widget {
         ]);
     }
 
-    public function render() {
+    public function render($inline = false) {
         $s = $this->settings();
-        if ($s['enabled'] !== '1' || is_admin()) return;
+        if ((!$inline && $s['enabled'] !== '1') || is_admin()) return;
+        if ($inline) ob_start();
         ?>
-        <div id="wpd-widget" class="wpd-widget wpd-<?php echo esc_attr($s['position']); ?>" style="--wpd-accent:<?php echo esc_attr(sanitize_hex_color($s['accent'])); ?>">
-            <button class="wpd-launch" type="button" aria-haspopup="dialog" aria-controls="wpd-dialog"><span class="wpd-pulse"></span><span class="wpd-launch-icon">+</span><b><?php echo esc_html($s['button_text']); ?></b></button>
-            <section id="wpd-dialog" class="wpd-dialog" role="dialog" aria-modal="true" aria-labelledby="wpd-title" hidden>
+        <div id="wpd-widget" class="wpd-widget <?php echo $inline?'wpd-inline':'wpd-'.esc_attr($s['position']); ?>" style="--wpd-accent:<?php echo esc_attr(sanitize_hex_color($s['accent'])); ?>">
+            <button class="wpd-launch" type="button" aria-haspopup="dialog" aria-controls="wpd-dialog" <?php echo $inline?'hidden':''; ?>><span class="wpd-pulse"></span><span class="wpd-launch-icon">+</span><b><?php echo esc_html($s['button_text']); ?></b></button>
+            <section id="wpd-dialog" class="wpd-dialog" role="dialog" aria-modal="true" aria-labelledby="wpd-title" <?php echo $inline?'':'hidden'; ?>>
                 <header><div class="wpd-brand"><span>W</span><div><b>WP Error Doctor</b><small>by Jawad Ilyas</small></div></div><button class="wpd-close" type="button" aria-label="Close">×</button></header>
                 <div class="wpd-view wpd-start">
                     <span class="wpd-kicker">FREE WEBSITE HEALTH CHECK</span>
@@ -91,6 +102,7 @@ final class WPD_Lead_Widget {
             </section>
         </div>
         <?php
+        if ($inline) return ob_get_clean();
     }
 
     public function routes() {
@@ -98,6 +110,31 @@ final class WPD_Lead_Widget {
         register_rest_route('wp-error-doctor/v1', '/capture', ['methods' => 'POST', 'callback' => [$this, 'capture'], 'permission_callback' => '__return_true']);
         register_rest_route('wp-error-doctor/v1', '/lead', ['methods' => 'POST', 'callback' => [$this, 'lead'], 'permission_callback' => '__return_true']);
     }
+
+    public function scanner_page() {
+        ob_start(); ?>
+        <main class="wpd-seo-page">
+          <section class="wpd-seo-hero"><p class="wpd-seo-kicker">FREE WORDPRESS WEBSITE HEALTH CHECK</p><h1>Check your WordPress website’s<br><em>security, speed, and health.</em></h1><p>Run a safe public diagnosis for server errors, security signals, performance issues, mobile readiness, and essential SEO problems. No WordPress login or password required.</p><div class="wpd-seo-trust"><span>✓ Public checks only</span><span>✓ No changes made</span><span>✓ Results in minutes</span></div></section>
+          <section class="wpd-seo-scanner"><?php echo $this->render(true); ?></section>
+          <section class="wpd-seo-intro"><div><p class="wpd-seo-kicker">WHAT THE TOOL CHECKS</p><h2>A practical website check for WordPress owners</h2></div><p>WP Error Doctor reviews publicly available website signals to identify common problems before they cost you enquiries, rankings, or customer trust. It cannot access private WordPress data and never attempts to log in.</p></section>
+          <section class="wpd-seo-cards"><article><span>01</span><h3>WordPress security check</h3><p>Review HTTPS, mixed content, exposed error messages, REST availability, and recommended browser security headers.</p></article><article><span>02</span><h3>Website speed check</h3><p>Measure server response time, HTML size, script and stylesheet volume, and performance warning signs.</p></article><article><span>03</span><h3>Mobile readiness</h3><p>Check responsive viewport configuration and detect markup that may create fixed-width mobile layout problems.</p></article><article><span>04</span><h3>Technical SEO health</h3><p>Inspect titles, descriptions, canonical URLs, sitemap access, robots files, and primary heading structure.</p></article><article><span>05</span><h3>WordPress error diagnosis</h3><p>Look for public signs of critical errors, database failures, PHP memory exhaustion, maintenance mode, and server errors.</p></article><article><span>06</span><h3>Actionable recommendations</h3><p>Receive prioritized findings with safe next steps and the option to ask Jawad for professional assistance.</p></article></section>
+          <section class="wpd-seo-faq"><p class="wpd-seo-kicker">COMMON QUESTIONS</p><h2>WordPress website checker FAQ</h2><details><summary>Is this WordPress security scanner safe?</summary><p>Yes. It only requests public pages that normal visitors can access. It does not request passwords, attempt login, exploit endpoints, or change website files.</p></details><details><summary>Can it find the exact plugin causing an error?</summary><p>Not from a public URL alone. The report can identify failure patterns, but private PHP and WordPress logs are normally required to confirm an exact plugin, theme, file, or line number.</p></details><details><summary>Does the speed check replace PageSpeed Insights?</summary><p>No. This provides a fast server and page-structure assessment. A complete Core Web Vitals audit requires a rendered browser and field-performance data.</p></details><details><summary>Can I check a non-WordPress website?</summary><p>Basic availability, security, speed, responsive, and SEO checks can still run, but WordPress-specific diagnosis will be limited.</p></details></section>
+          <section class="wpd-seo-cta"><div><p class="wpd-seo-kicker">WORDPRESS DEVELOPER · 10+ YEARS EXPERIENCE</p><h2>Found a problem you need fixed?</h2><p>Send your diagnostic report to Jawad for a careful review and practical next step.</p></div><a href="<?php echo esc_url(home_url('/#contact')); ?>">Hire Jawad to Fix It →</a></section>
+        </main><?php return ob_get_clean();
+    }
+
+    private function is_scanner_page() { return is_page((int)get_option('wpd_scanner_page_id')); }
+    public function seo_title($parts) { if($this->is_scanner_page()) $parts['title']='Free WordPress Security, Speed & Website Health Check'; return $parts; }
+    public function seo_head() { if(!$this->is_scanner_page()) return; $url=get_permalink((int)get_option('wpd_scanner_page_id')); $description='Check your WordPress website for security signals, speed problems, HTTP errors, mobile readiness, and technical SEO issues with a free public scan.'; ?>
+      <meta name="description" content="<?php echo esc_attr($description); ?>">
+      <meta name="robots" content="index,follow,max-image-preview:large">
+      <link rel="canonical" href="<?php echo esc_url($url); ?>">
+      <meta property="og:title" content="Free WordPress Security, Speed & Website Health Check">
+      <meta property="og:description" content="<?php echo esc_attr($description); ?>">
+      <meta property="og:type" content="website"><meta property="og:url" content="<?php echo esc_url($url); ?>">
+      <script type="application/ld+json"><?php echo wp_json_encode(['@context'=>'https://schema.org','@type'=>'WebApplication','name'=>'WP Error Doctor','url'=>$url,'applicationCategory'=>'SecurityApplication','operatingSystem'=>'Web','description'=>$description,'offers'=>['@type'=>'Offer','price'=>'0','priceCurrency'=>'USD'],'provider'=>['@type'=>'Person','name'=>'Jawad Ilyas','url'=>'https://jawadjd.dev']]); ?></script>
+      <script type="application/ld+json"><?php echo wp_json_encode(['@context'=>'https://schema.org','@type'=>'FAQPage','mainEntity'=>[['@type'=>'Question','name'=>'Is this WordPress security scanner safe?','acceptedAnswer'=>['@type'=>'Answer','text'=>'Yes. It only checks public pages and never attempts to log in or change website files.']],['@type'=>'Question','name'=>'Can it find the exact plugin causing an error?','acceptedAnswer'=>['@type'=>'Answer','text'=>'A public scan can identify failure patterns, but backend logs are required to confirm an exact plugin, theme, file, or line number.']],['@type'=>'Question','name'=>'Can I check a non-WordPress website?','acceptedAnswer'=>['@type'=>'Answer','text'=>'Basic security, speed, availability, responsive, and SEO checks can run, but WordPress-specific diagnosis will be limited.']]]]); ?></script>
+    <?php }
 
     public function capture(WP_REST_Request $request) {
         global $wpdb;
