@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor
  * Description: An SEO-ready WordPress security, speed, and website health checker with lead capture.
- * Version: 2.3.1
+ * Version: 2.3.2
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '2.3.1';
+    const VERSION = '2.3.2';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -75,6 +75,7 @@ final class WPD_Lead_Widget {
         wp_enqueue_style('wpd-page', plugin_dir_url(__FILE__) . 'assets/page.css', ['wpd-form-v2'], self::VERSION);
         wp_enqueue_style('wpd-page-premium', plugin_dir_url(__FILE__) . 'assets/page-premium.css', ['wpd-page'], self::VERSION);
         wp_enqueue_style('wpd-page-v3', plugin_dir_url(__FILE__) . 'assets/page-v3.css', ['wpd-page-premium'], self::VERSION);
+        wp_enqueue_style('wpd-page-v4', plugin_dir_url(__FILE__) . 'assets/page-v4.css', ['wpd-page-v3'], self::VERSION);
         wp_enqueue_script('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.js', [], self::VERSION, true);
         if ($s['chat_enabled'] === '1') { wp_enqueue_style('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.css', [], self::VERSION); wp_enqueue_style('wpd-chat-enhance', plugin_dir_url(__FILE__) . 'assets/chat-enhance.css', ['wpd-chat'], self::VERSION); wp_enqueue_script('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.js', [], self::VERSION, true); }
         wp_localize_script('wpd-widget', 'WPDWidget', [
@@ -92,7 +93,7 @@ final class WPD_Lead_Widget {
         if ($inline) ob_start();
         ?>
         <div id="wpd-widget" class="wpd-widget <?php echo $inline?'wpd-inline':'wpd-'.esc_attr($s['position']); ?>" style="--wpd-accent:<?php echo esc_attr(sanitize_hex_color($s['accent'])); ?>">
-            <button class="wpd-launch" type="button" aria-haspopup="dialog" aria-controls="wpd-dialog" <?php echo $inline?'hidden':''; ?>><span class="wpd-pulse"></span><span class="wpd-launch-icon">+</span><b><?php echo esc_html($s['button_text']); ?></b></button>
+            <?php if ( ! $inline ) : ?><button class="wpd-launch" type="button" aria-haspopup="dialog" aria-controls="wpd-dialog"><span class="wpd-pulse"></span><span class="wpd-launch-icon">+</span><b><?php echo esc_html($s['button_text']); ?></b></button><?php endif; ?>
             <section id="wpd-dialog" class="wpd-dialog" role="dialog" aria-modal="true" aria-labelledby="wpd-title" <?php echo $inline?'':'hidden'; ?>>
                 <header><div class="wpd-brand"><span>W</span><div><b>WP Error Doctor</b><small>by Jawad Ilyas</small></div></div><button class="wpd-close" type="button" aria-label="Close">×</button></header>
                 <div class="wpd-view wpd-start">

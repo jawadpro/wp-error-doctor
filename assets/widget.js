@@ -3,7 +3,7 @@
   const dialog = root.querySelector('.wpd-dialog'), launch = root.querySelector('.wpd-launch');
   const views = ['start','progress','result','lead']; let report = null;
   const show = name => views.forEach(v => root.querySelector('.wpd-'+v).hidden = v !== name);
-  launch.addEventListener('click', () => { dialog.hidden = !dialog.hidden; launch.setAttribute('aria-expanded', String(!dialog.hidden)); });
+  if (launch) launch.addEventListener('click', () => { dialog.hidden = !dialog.hidden; launch.setAttribute('aria-expanded', String(!dialog.hidden)); });
   root.querySelector('.wpd-close').addEventListener('click', () => dialog.hidden = true);
   root.querySelector('.wpd-back').addEventListener('click', () => show('result'));
   root.querySelector('.wpd-scan-form').addEventListener('submit', async e => {
