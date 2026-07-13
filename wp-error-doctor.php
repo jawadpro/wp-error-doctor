@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor
  * Description: An SEO-ready WordPress security, speed, and website health checker with lead capture.
- * Version: 2.2.0
+ * Version: 2.2.1
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '2.2.0';
+    const VERSION = '2.2.1';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -119,20 +119,20 @@ final class WPD_Lead_Widget {
     }
 
     public function render_chatbot() { $s=$this->settings(); if($s['chat_enabled']!=='1' || is_admin()) return; ?>
-      <div id="wpd-ai-chat" class="wpd-ai-chat"><button class="wpd-chat-launch" type="button" aria-controls="wpd-chat-panel"><span class="wpd-chat-orb">✦</span><b>Ask Jawad’s AI</b><i></i></button><section id="wpd-chat-panel" class="wpd-chat-panel" aria-label="Jawad's AI website assistant" hidden><header><div><span>✦</span><p><b>Jawad’s AI Assistant</b><small>Website & WordPress guidance</small></p></div><button type="button" aria-label="Close chat">×</button></header><div class="wpd-chat-messages" aria-live="polite"></div><div class="wpd-chat-quick"><button type="button">I need a website</button><button type="button">Fix my WordPress</button><button type="button">Improve site speed</button></div><form><textarea rows="1" maxlength="1000" placeholder="Tell me about your website…" required></textarea><button type="submit" aria-label="Send message">↑</button></form><footer><span>AI assistant · Replies may be imperfect</span><a href="https://wa.me/923316388373" target="_blank" rel="noopener">WhatsApp Jawad</a></footer></section></div>
+      <div id="wpd-ai-chat" class="wpd-ai-chat"><button class="wpd-chat-launch" type="button" aria-controls="wpd-chat-panel"><span class="wpd-chat-orb">✦</span><b>Ask Jawad’s AI</b><i></i></button><section id="wpd-chat-panel" class="wpd-chat-panel" aria-label="Jawad's AI website assistant" hidden><header><div><span>✦</span><p><b>Jawad’s AI Assistant</b><small>Website & WordPress guidance</small></p></div><button type="button" aria-label="Close chat">×</button></header><div class="wpd-chat-messages" aria-live="polite"></div><div class="wpd-chat-quick"><button type="button">I need a website</button><button type="button">Fix my WordPress</button><button type="button">Improve site speed</button></div><form><textarea rows="1" maxlength="1000" placeholder="Tell me about your website…" required></textarea><button type="submit" aria-label="Send message">↑</button></form><footer><span>AI assistant · Replies may be imperfect</span></footer></section></div>
     <?php }
 
     public function chat(WP_REST_Request $request) {
         if($this->rate_limited('chat',20)) return new WP_Error('rate_limit','You’ve reached the chat limit. Please contact Jawad directly.',['status'=>429]);
         $messages=$request->get_param('messages'); if(!is_array($messages)) return new WP_Error('invalid_chat','Invalid conversation.',['status'=>400]); $messages=array_slice($messages,-10); $input=[];
         foreach($messages as $m){ $role=($m['role']??'')==='assistant'?'assistant':'user'; $text=mb_substr(sanitize_textarea_field($m['content']??''),0,1200); if($text) $input[]=['role'=>$role,'content'=>$text]; }
-        $s=$this->settings(); $key=defined('OPENAI_API_KEY')?OPENAI_API_KEY:trim($s['openai_key']);
-        if(!$key) return rest_ensure_response(['reply'=>$this->guided_reply(end($input)['content']??''),'handoff'=>count($input)>=5]);
+        $s=$this->settings(); $key=defined('OPENAI_API_KEY')?OPENAI_API_KEY:trim($s['openai_key']); $latest=strtolower(end($input)['content']??''); $handoff=(bool)preg_match('/contact|whatsapp|email|hire|quote|urgent|call|talk to jawad|speak to jawad/',$latest);
+        if(!$key) return rest_ensure_response(['reply'=>$this->guided_reply($latest),'handoff'=>$handoff]);
         $instructions="You are the helpful website assistant for Jawad Ilyas, an experienced WordPress and full-stack developer. Your goal is to understand the visitor's actual needs, give concise useful guidance, qualify project type, website URL, problem, urgency, and approximate scope, and help them decide whether Jawad is a good fit. Never pretend to be Jawad. Never claim you inspected a site unless scan data is provided. Do not pressure, manipulate, or fabricate scarcity. Keep replies under 90 words, warm and professional. Ask only one useful question at a time. After understanding the need, naturally offer: WhatsApp Jawad at https://wa.me/923316388373 or email jawad.productions@gmail.com. For urgent broken WordPress sites, offer the handoff sooner. Do not request passwords, API keys, payment data, or sensitive access.";
         $response=wp_remote_post('https://api.openai.com/v1/responses',['timeout'=>25,'headers'=>['Authorization'=>'Bearer '.$key,'Content-Type'=>'application/json'],'body'=>wp_json_encode(['model'=>sanitize_text_field($s['openai_model']),'instructions'=>$instructions,'input'=>$input,'max_output_tokens'=>220])]);
         if(is_wp_error($response)) return new WP_Error('ai_unavailable','The assistant is temporarily unavailable. You can contact Jawad on WhatsApp.',['status'=>503]); $data=json_decode(wp_remote_retrieve_body($response),true);
         if(wp_remote_retrieve_response_code($response)>=400) return new WP_Error('ai_error','AI setup needs attention. Please use WhatsApp for now.',['status'=>503]); $reply=''; foreach(($data['output']??[]) as $out) foreach(($out['content']??[]) as $part) if(($part['type']??'')==='output_text') $reply.=$part['text']??'';
-        return rest_ensure_response(['reply'=>$reply?:$this->guided_reply(end($input)['content']??''),'handoff'=>count($input)>=5]);
+        return rest_ensure_response(['reply'=>$reply?:$this->guided_reply($latest),'handoff'=>$handoff]);
     }
 
     private function guided_reply($text){ $t=strtolower($text); if(strpos($t,'speed')!==false) return 'Slow WordPress sites are often affected by hosting response time, heavy plugins, images, or page-builder assets. What website would you like Jawad to review?'; if(strpos($t,'error')!==false||strpos($t,'broken')!==false) return 'I’m sorry your site is having trouble. What error do you see, and when did it begin? Please don’t share passwords here. For urgent help, you can WhatsApp Jawad directly.'; if(strpos($t,'website')!==false||strpos($t,'build')!==false) return 'Great—Jawad builds WordPress, WooCommerce, landing pages, and custom websites. What kind of business is it for, and what should the website help visitors do?'; return 'I can help you plan a website, troubleshoot WordPress, improve speed, or understand the best next step. What would you like to build or fix?'; }
