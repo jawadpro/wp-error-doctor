@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor
  * Description: An SEO-ready WordPress security, speed, and website health checker with lead capture.
- * Version: 2.2.1
+ * Version: 2.3.0
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '2.2.1';
+    const VERSION = '2.3.0';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -46,6 +46,7 @@ final class WPD_Lead_Widget {
         add_filter('document_title_parts', [$this, 'seo_title']);
         add_action('wp_head', [$this, 'seo_head']);
         add_filter('template_include', [$this, 'scanner_template']);
+        add_filter('wp_nav_menu_items', [$this, 'tools_menu_link'], 20, 2);
     }
 
     public function settings() {
@@ -62,6 +63,7 @@ final class WPD_Lead_Widget {
 
     public function assets() {
         $s = $this->settings();
+        if (!is_admin()) wp_enqueue_style('wpd-menu', plugin_dir_url(__FILE__) . 'assets/menu.css', [], self::VERSION);
         $scanner_page = (int)get_option('wpd_scanner_page_id');
         $report_page = (int)get_option('wpd_report_page_id');
         if (($s['enabled'] !== '1' && $s['chat_enabled'] !== '1' && !is_page($scanner_page) && !is_page($report_page)) || is_admin()) return;
@@ -72,6 +74,7 @@ final class WPD_Lead_Widget {
         wp_enqueue_style('wpd-form-v2', plugin_dir_url(__FILE__) . 'assets/form-v2.css', ['wpd-marketing'], self::VERSION);
         wp_enqueue_style('wpd-page', plugin_dir_url(__FILE__) . 'assets/page.css', ['wpd-form-v2'], self::VERSION);
         wp_enqueue_style('wpd-page-premium', plugin_dir_url(__FILE__) . 'assets/page-premium.css', ['wpd-page'], self::VERSION);
+        wp_enqueue_style('wpd-page-v3', plugin_dir_url(__FILE__) . 'assets/page-v3.css', ['wpd-page-premium'], self::VERSION);
         wp_enqueue_script('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.js', [], self::VERSION, true);
         if ($s['chat_enabled'] === '1') { wp_enqueue_style('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.css', [], self::VERSION); wp_enqueue_style('wpd-chat-enhance', plugin_dir_url(__FILE__) . 'assets/chat-enhance.css', ['wpd-chat'], self::VERSION); wp_enqueue_script('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.js', [], self::VERSION, true); wp_enqueue_script('wpd-chat-auto', plugin_dir_url(__FILE__) . 'assets/chat-auto.js', ['wpd-chat'], self::VERSION, true); }
         wp_localize_script('wpd-widget', 'WPDWidget', [
@@ -139,17 +142,20 @@ final class WPD_Lead_Widget {
 
     public function scanner_page() {
         ob_start(); ?>
-        <main class="wpd-seo-page">
-          <section class="wpd-seo-hero"><p class="wpd-seo-kicker">FREE WORDPRESS WEBSITE HEALTH CHECK</p><h1>Check your WordPress website’s<br><em>security, speed, and health.</em></h1><p>Run a safe public diagnosis for server errors, security signals, performance issues, mobile readiness, and essential SEO problems. No WordPress login or password required.</p><div class="wpd-seo-trust"><span>✓ Public checks only</span><span>✓ No changes made</span><span>✓ Results in minutes</span></div></section>
-          <section class="wpd-seo-scanner"><?php echo $this->render(true); ?></section>
-          <section class="wpd-seo-intro"><div><p class="wpd-seo-kicker">WHAT THE TOOL CHECKS</p><h2>A practical website check for WordPress owners</h2></div><p>WP Error Doctor reviews publicly available website signals to identify common problems before they cost you enquiries, rankings, or customer trust. It cannot access private WordPress data and never attempts to log in.</p></section>
-          <section class="wpd-seo-cards"><article><span>01</span><h3>WordPress security check</h3><p>Review HTTPS, mixed content, exposed error messages, REST availability, and recommended browser security headers.</p></article><article><span>02</span><h3>Website speed check</h3><p>Measure server response time, HTML size, script and stylesheet volume, and performance warning signs.</p></article><article><span>03</span><h3>Mobile readiness</h3><p>Check responsive viewport configuration and detect markup that may create fixed-width mobile layout problems.</p></article><article><span>04</span><h3>Technical SEO health</h3><p>Inspect titles, descriptions, canonical URLs, sitemap access, robots files, and primary heading structure.</p></article><article><span>05</span><h3>WordPress error diagnosis</h3><p>Look for public signs of critical errors, database failures, PHP memory exhaustion, maintenance mode, and server errors.</p></article><article><span>06</span><h3>Actionable recommendations</h3><p>Receive prioritized findings with safe next steps and the option to ask Jawad for professional assistance.</p></article></section>
-          <section class="wpd-seo-faq"><p class="wpd-seo-kicker">COMMON QUESTIONS</p><h2>WordPress website checker FAQ</h2><details><summary>Is this WordPress security scanner safe?</summary><p>Yes. It only requests public pages that normal visitors can access. It does not request passwords, attempt login, exploit endpoints, or change website files.</p></details><details><summary>Can it find the exact plugin causing an error?</summary><p>Not from a public URL alone. The report can identify failure patterns, but private PHP and WordPress logs are normally required to confirm an exact plugin, theme, file, or line number.</p></details><details><summary>Does the speed check replace PageSpeed Insights?</summary><p>No. This provides a fast server and page-structure assessment. A complete Core Web Vitals audit requires a rendered browser and field-performance data.</p></details><details><summary>Can I check a non-WordPress website?</summary><p>Basic availability, security, speed, responsive, and SEO checks can still run, but WordPress-specific diagnosis will be limited.</p></details></section>
-          <section class="wpd-seo-cta"><div><p class="wpd-seo-kicker">WORDPRESS DEVELOPER · 10+ YEARS EXPERIENCE</p><h2>Found a problem you need fixed?</h2><p>Send your diagnostic report to Jawad for a careful review and practical next step.</p></div><a href="<?php echo esc_url(home_url('/#contact')); ?>">Hire Jawad to Fix It →</a></section>
+        <main class="wpd-seo-page wpd-v3-page">
+          <section class="wpd-v3-hero">
+            <div class="wpd-v3-copy"><p class="wpd-seo-kicker"><span></span> FREE WORDPRESS HEALTH CHECK</p><h1>Is your website<br><em>quietly losing</em><br>customers?</h1><p>Paste your website URL to uncover public security risks, speed problems, WordPress errors, mobile issues, and technical SEO gaps.</p><div class="wpd-v3-proof"><div><strong>20+</strong><span>public checks</span></div><div><strong>~60s</strong><span>to diagnose</span></div><div><strong>0</strong><span>passwords needed</span></div></div>
+            </div>
+            <div class="wpd-v3-tool"><div class="wpd-v3-tool-label"><span>●</span> LIVE WEBSITE DIAGNOSTIC</div><?php echo $this->render(true); ?><div class="wpd-v3-safe"><span>◆</span><p><b>Safe public scan</b><small>We never log in, change files, or request passwords.</small></p></div></div>
+          </section>
+          <section id="checks" class="wpd-v3-checks"><div><p class="wpd-seo-kicker">WHAT YOU’LL DISCOVER</p><h2>One URL. A clearer picture of your website.</h2><p>The scan turns public technical signals into plain-language findings and practical next steps.</p></div><div class="wpd-v3-list"><article><span>01</span><div><h3>Security signals</h3><p>HTTPS, mixed content, exposed errors, and browser security headers.</p></div></article><article><span>02</span><div><h3>Speed & performance</h3><p>Response time, page weight, scripts, styles, and performance warning signs.</p></div></article><article><span>03</span><div><h3>WordPress health</h3><p>REST availability, server errors, maintenance mode, and fatal-error signatures.</p></div></article><article><span>04</span><div><h3>Mobile & SEO readiness</h3><p>Responsive configuration, metadata, canonical URL, sitemap, and headings.</p></div></article></div></section>
+          <section id="faq" class="wpd-seo-faq"><p class="wpd-seo-kicker">BEFORE YOU SCAN</p><h2>What website owners ask</h2><details><summary>Is this website scan safe?</summary><p>Yes. It only requests public pages available to normal visitors. It never logs in, exploits endpoints, or changes website files.</p></details><details><summary>Will this find the exact plugin causing an error?</summary><p>Public signals can narrow down the failure type. Private PHP and WordPress logs are usually required to confirm an exact plugin, theme, file, or line number.</p></details><details><summary>Can I check a non-WordPress website?</summary><p>Yes. Security, speed, availability, mobile, and SEO checks still work, while WordPress-specific diagnosis will be limited.</p></details></section>
+          <section class="wpd-seo-cta"><div><p class="wpd-seo-kicker">NEED A HUMAN EXPERT?</p><h2>Turn the findings into a fix.</h2><p>Send your report to Jawad for a careful review and a practical next step.</p></div><a href="<?php echo esc_url(home_url('/#contact')); ?>">Hire Jawad to Fix It →</a></section>
         </main><?php return ob_get_clean();
     }
 
     private function is_scanner_page() { return is_page((int)get_option('wpd_scanner_page_id')); }
+    public function tools_menu_link($items,$args) { $location=$args->theme_location??''; if($location && !preg_match('/primary|header|main|menu-1/i',$location)) return $items; $url=get_permalink((int)get_option('wpd_scanner_page_id')); if(!$url) return $items; return $items.'<li class="menu-item wpd-tools-menu"><a href="'.esc_url($url).'"><span>Free Web Tools</span><i>NEW</i></a></li>'; }
     public function scanner_template($template) { if($this->is_scanner_page()) { $custom=plugin_dir_path(__FILE__).'templates/scanner-page.php'; if(file_exists($custom)) return $custom; } return $template; }
     public function seo_title($parts) { if($this->is_scanner_page()) $parts['title']='Free WordPress Security, Speed & Website Health Check'; return $parts; }
     public function seo_head() { if(!$this->is_scanner_page()) return; $url=get_permalink((int)get_option('wpd_scanner_page_id')); $description='Check your WordPress website for security signals, speed problems, HTTP errors, mobile readiness, and technical SEO issues with a free public scan.'; ?>
