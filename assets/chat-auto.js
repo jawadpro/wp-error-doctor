@@ -1,1 +1,0 @@
-(()=>{try{if(sessionStorage.getItem('wpd_chat_greeted'))return;setTimeout(()=>{const button=document.querySelector('#wpd-ai-chat .wpd-chat-launch');const panel=document.querySelector('#wpd-chat-panel');if(button&&panel&&panel.hidden){sessionStorage.setItem('wpd_chat_greeted','1');button.click()}},7000)}catch(e){}})();
