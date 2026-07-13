@@ -4,7 +4,7 @@ Tags: diagnostics, lead generation, wordpress errors, website scanner
 Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 2.3.2
+Stable tag: 2.3.3
 License: GPLv2 or later
 
 An SEO-ready WordPress security, speed, error, and website health checker with qualified lead capture.
@@ -24,6 +24,9 @@ The scanner uses WordPress safe HTTP requests, never requests credentials, does 
 5. Confirm that WordPress email delivery is configured with SMTP.
 
 == Changelog ==
+
+= 2.3.3 =
+* Restricted direct WhatsApp handoff to the contextual AI assistant flow.
 
 = 2.3.2 =
 * Removed the legacy floating trigger from the inline scanner.
