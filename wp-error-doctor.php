@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor
  * Description: An SEO-ready WordPress security, speed, and website health checker with lead capture.
- * Version: 2.1.1
+ * Version: 2.2.0
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '2.1.1';
+    const VERSION = '2.2.0';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -45,6 +45,7 @@ final class WPD_Lead_Widget {
         add_shortcode('wp_error_doctor_scanner', [$this, 'scanner_page']);
         add_filter('document_title_parts', [$this, 'seo_title']);
         add_action('wp_head', [$this, 'seo_head']);
+        add_filter('template_include', [$this, 'scanner_template']);
     }
 
     public function settings() {
@@ -70,6 +71,7 @@ final class WPD_Lead_Widget {
         wp_enqueue_style('wpd-marketing', plugin_dir_url(__FILE__) . 'assets/marketing.css', ['wpd-widget'], self::VERSION);
         wp_enqueue_style('wpd-form-v2', plugin_dir_url(__FILE__) . 'assets/form-v2.css', ['wpd-marketing'], self::VERSION);
         wp_enqueue_style('wpd-page', plugin_dir_url(__FILE__) . 'assets/page.css', ['wpd-form-v2'], self::VERSION);
+        wp_enqueue_style('wpd-page-premium', plugin_dir_url(__FILE__) . 'assets/page-premium.css', ['wpd-page'], self::VERSION);
         wp_enqueue_script('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.js', [], self::VERSION, true);
         if ($s['chat_enabled'] === '1') { wp_enqueue_style('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.css', [], self::VERSION); wp_enqueue_style('wpd-chat-enhance', plugin_dir_url(__FILE__) . 'assets/chat-enhance.css', ['wpd-chat'], self::VERSION); wp_enqueue_script('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.js', [], self::VERSION, true); wp_enqueue_script('wpd-chat-auto', plugin_dir_url(__FILE__) . 'assets/chat-auto.js', ['wpd-chat'], self::VERSION, true); }
         wp_localize_script('wpd-widget', 'WPDWidget', [
@@ -148,6 +150,7 @@ final class WPD_Lead_Widget {
     }
 
     private function is_scanner_page() { return is_page((int)get_option('wpd_scanner_page_id')); }
+    public function scanner_template($template) { if($this->is_scanner_page()) { $custom=plugin_dir_path(__FILE__).'templates/scanner-page.php'; if(file_exists($custom)) return $custom; } return $template; }
     public function seo_title($parts) { if($this->is_scanner_page()) $parts['title']='Free WordPress Security, Speed & Website Health Check'; return $parts; }
     public function seo_head() { if(!$this->is_scanner_page()) return; $url=get_permalink((int)get_option('wpd_scanner_page_id')); $description='Check your WordPress website for security signals, speed problems, HTTP errors, mobile readiness, and technical SEO issues with a free public scan.'; ?>
       <meta name="description" content="<?php echo esc_attr($description); ?>">
