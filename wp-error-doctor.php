@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor
  * Description: An SEO-ready WordPress security, speed, and website health checker with lead capture.
- * Version: 2.4.1
+ * Version: 2.5.0
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '2.4.1';
+    const VERSION = '2.5.0';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -78,6 +78,8 @@ final class WPD_Lead_Widget {
         wp_enqueue_style('wpd-page-v4', plugin_dir_url(__FILE__) . 'assets/page-v4.css', ['wpd-page-v3'], self::VERSION);
         wp_enqueue_style('wpd-page-readable', plugin_dir_url(__FILE__) . 'assets/page-readable.css', ['wpd-page-v4'], self::VERSION);
         wp_enqueue_style('wpd-multistep', plugin_dir_url(__FILE__) . 'assets/multistep.css', ['wpd-page-readable'], self::VERSION);
+        wp_enqueue_style('wpd-form-clinical', plugin_dir_url(__FILE__) . 'assets/form-clinical.css', ['wpd-multistep'], self::VERSION);
+        wp_enqueue_style('wpd-form-clinical-results', plugin_dir_url(__FILE__) . 'assets/form-clinical-results.css', ['wpd-form-clinical'], self::VERSION);
         wp_enqueue_script('wpd-widget', plugin_dir_url(__FILE__) . 'assets/widget.js', [], self::VERSION, true);
         if ($s['chat_enabled'] === '1') { wp_enqueue_style('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.css', [], self::VERSION); wp_enqueue_style('wpd-chat-enhance', plugin_dir_url(__FILE__) . 'assets/chat-enhance.css', ['wpd-chat'], self::VERSION); wp_enqueue_style('wpd-chat-readable', plugin_dir_url(__FILE__) . 'assets/chat-readable.css', ['wpd-chat-enhance'], self::VERSION); wp_enqueue_style('wpd-chat-v2', plugin_dir_url(__FILE__) . 'assets/chat-v2.css', ['wpd-chat-readable'], self::VERSION); wp_enqueue_script('wpd-chat', plugin_dir_url(__FILE__) . 'assets/chat.js', [], self::VERSION, true); }
         wp_localize_script('wpd-widget', 'WPDWidget', [
