@@ -4,7 +4,7 @@ Tags: diagnostics, lead generation, wordpress errors, website scanner
 Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 2.5.0
+Stable tag: 2.5.1
 License: GPLv2 or later
 
 An SEO-ready WordPress security, speed, error, and website health checker with qualified lead capture.
@@ -24,6 +24,9 @@ The scanner uses WordPress safe HTTP requests, never requests credentials, does 
 5. Confirm that WordPress email delivery is configured with SMTP.
 
 == Changelog ==
+
+= 2.5.1 =
+* Added gpt-5-mini fallback and actionable OpenAI key, quota, and model errors.
 
 = 2.5.0 =
 * Introduced a new high-contrast clinical form design for the diagnostic flow.

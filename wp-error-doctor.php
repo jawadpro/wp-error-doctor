@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Error Doctor
  * Description: An SEO-ready WordPress security, speed, and website health checker with lead capture.
- * Version: 2.5.0
+ * Version: 2.5.1
  * Author: Jawad Ilyas
  * Author URI: https://jawadjd.dev
  * Text Domain: wp-error-doctor
@@ -13,7 +13,7 @@
 defined('ABSPATH') || exit;
 
 final class WPD_Lead_Widget {
-    const VERSION = '2.5.0';
+    const VERSION = '2.5.1';
     const OPTION = 'wpd_widget_settings';
 
     public static function activate() {
@@ -55,7 +55,7 @@ final class WPD_Lead_Widget {
             'accent' => '#22d3ee', 'position' => 'right',
             'button_text' => 'Diagnose My Website',
             'headline' => 'Is your WordPress site having problems?',
-            'chat_enabled' => '1', 'openai_key' => '', 'openai_model' => 'gpt-5.6-luna',
+            'chat_enabled' => '1', 'openai_key' => '', 'openai_model' => 'gpt-5-mini',
         ]);
     }
 
@@ -137,11 +137,14 @@ final class WPD_Lead_Widget {
         $s=$this->settings(); $key=defined('OPENAI_API_KEY')?OPENAI_API_KEY:trim($s['openai_key']); $latest=strtolower(end($input)['content']??''); $handoff=(bool)preg_match('/contact|whatsapp|email|hire|quote|urgent|call|talk to jawad|speak to jawad/',$latest);
         if(!$key) return rest_ensure_response(['reply'=>$this->guided_reply($latest),'handoff'=>$handoff]);
         $instructions="You are the helpful website assistant for Jawad Ilyas, an experienced WordPress and full-stack developer. Your goal is to understand the visitor's actual needs, give concise useful guidance, qualify project type, website URL, problem, urgency, and approximate scope, and help them decide whether Jawad is a good fit. Never pretend to be Jawad. Never claim you inspected a site unless scan data is provided. Do not pressure, manipulate, or fabricate scarcity. Keep replies under 90 words, warm and professional. Ask only one useful question at a time. After understanding the need, naturally offer: WhatsApp Jawad at https://wa.me/923316388373 or email jawad.productions@gmail.com. For urgent broken WordPress sites, offer the handoff sooner. Do not request passwords, API keys, payment data, or sensitive access.";
-        $response=wp_remote_post('https://api.openai.com/v1/responses',['timeout'=>25,'headers'=>['Authorization'=>'Bearer '.$key,'Content-Type'=>'application/json'],'body'=>wp_json_encode(['model'=>sanitize_text_field($s['openai_model']),'instructions'=>$instructions,'input'=>$input,'max_output_tokens'=>220])]);
-        if(is_wp_error($response)) return new WP_Error('ai_unavailable','The assistant is temporarily unavailable. You can contact Jawad on WhatsApp.',['status'=>503]); $data=json_decode(wp_remote_retrieve_body($response),true);
-        if(wp_remote_retrieve_response_code($response)>=400) return new WP_Error('ai_error','AI setup needs attention. Please use WhatsApp for now.',['status'=>503]); $reply=''; foreach(($data['output']??[]) as $out) foreach(($out['content']??[]) as $part) if(($part['type']??'')==='output_text') $reply.=$part['text']??'';
+        $model=sanitize_text_field($s['openai_model'])?:'gpt-5-mini'; $response=$this->openai_response($key,$model,$instructions,$input);
+        if(is_wp_error($response)) return new WP_Error('ai_unavailable','The AI service could not be reached. Please try again shortly.',['status'=>503]); $data=json_decode(wp_remote_retrieve_body($response),true); $code=wp_remote_retrieve_response_code($response);
+        if($code>=400 && $model!=='gpt-5-mini'){ $response=$this->openai_response($key,'gpt-5-mini',$instructions,$input); $data=json_decode(wp_remote_retrieve_body($response),true); $code=wp_remote_retrieve_response_code($response); }
+        if($code>=400){ $type=$data['error']['type']??''; $message=$data['error']['message']??''; error_log('WP Error Doctor OpenAI: '.$type.' - '.$message); if($code===401) $public='The OpenAI API key is invalid or inactive.'; elseif($code===429) $public='The OpenAI account has no available quota. Check billing and usage limits.'; elseif(stripos($message,'model')!==false) $public='The selected AI model is unavailable to this API project.'; else $public='The AI connection needs attention. Check the plugin settings and OpenAI billing.'; return new WP_Error('ai_error',$public,['status'=>503]); } $reply=''; foreach(($data['output']??[]) as $out) foreach(($out['content']??[]) as $part) if(($part['type']??'')==='output_text') $reply.=$part['text']??'';
         return rest_ensure_response(['reply'=>$reply?:$this->guided_reply($latest),'handoff'=>$handoff]);
     }
+
+    private function openai_response($key,$model,$instructions,$input){ return wp_remote_post('https://api.openai.com/v1/responses',['timeout'=>30,'headers'=>['Authorization'=>'Bearer '.$key,'Content-Type'=>'application/json'],'body'=>wp_json_encode(['model'=>$model,'instructions'=>$instructions,'input'=>$input,'max_output_tokens'=>260])]); }
 
     private function guided_reply($text){ $t=strtolower($text); if(strpos($t,'speed')!==false) return 'Slow WordPress sites are often affected by hosting response time, heavy plugins, images, or page-builder assets. What website would you like Jawad to review?'; if(strpos($t,'error')!==false||strpos($t,'broken')!==false) return 'I’m sorry your site is having trouble. What error do you see, and when did it begin? Please don’t share passwords here. For urgent help, you can WhatsApp Jawad directly.'; if(strpos($t,'website')!==false||strpos($t,'build')!==false) return 'Great—Jawad builds WordPress, WooCommerce, landing pages, and custom websites. What kind of business is it for, and what should the website help visitors do?'; return 'I can help you plan a website, troubleshoot WordPress, improve speed, or understand the best next step. What would you like to build or fix?'; }
 
@@ -325,7 +328,7 @@ final class WPD_Lead_Widget {
         register_setting('wpd_settings', self::OPTION, ['sanitize_callback'=>function($v){ return [
             'enabled'=>!empty($v['enabled'])?'1':'0', 'email'=>sanitize_email($v['email']??''), 'accent'=>sanitize_hex_color($v['accent']??'')?:'#22d3ee',
             'position'=>($v['position']??'right')==='left'?'left':'right', 'button_text'=>sanitize_text_field($v['button_text']??''), 'headline'=>sanitize_text_field($v['headline']??''),
-            'chat_enabled'=>!empty($v['chat_enabled'])?'1':'0','openai_key'=>sanitize_text_field($v['openai_key']??''),'openai_model'=>sanitize_text_field($v['openai_model']??'gpt-5.6-luna')]; }]);
+            'chat_enabled'=>!empty($v['chat_enabled'])?'1':'0','openai_key'=>sanitize_text_field($v['openai_key']??''),'openai_model'=>sanitize_text_field($v['openai_model']??'gpt-5-mini')]; }]);
     }
     public function settings_page() { $s=$this->settings(); ?>
         <div class="wrap"><h1>WP Error Doctor</h1><p>Configure the floating diagnostic lead widget.</p><form method="post" action="options.php"><?php settings_fields('wpd_settings'); ?><table class="form-table">
@@ -337,7 +340,7 @@ final class WPD_Lead_Widget {
         <tr><th>Headline</th><td><input class="large-text" name="<?php echo self::OPTION; ?>[headline]" value="<?php echo esc_attr($s['headline']); ?>"></td></tr>
         <tr><th>AI sales assistant</th><td><label><input type="checkbox" name="<?php echo self::OPTION; ?>[chat_enabled]" value="1" <?php checked($s['chat_enabled'],'1'); ?>> Show the AI chatbot on the public website</label></td></tr>
         <tr><th>OpenAI API key</th><td><input class="regular-text" type="password" autocomplete="new-password" name="<?php echo self::OPTION; ?>[openai_key]" value="<?php echo esc_attr($s['openai_key']); ?>"><p class="description">Stored in WordPress options and never sent to the browser. For stronger security, define OPENAI_API_KEY in wp-config.php.</p></td></tr>
-        <tr><th>AI model</th><td><input class="regular-text" name="<?php echo self::OPTION; ?>[openai_model]" value="<?php echo esc_attr($s['openai_model']); ?>"><p class="description">Default: gpt-5.6-luna for a cost-sensitive conversational assistant.</p></td></tr>
+        <tr><th>AI model</th><td><input class="regular-text" name="<?php echo self::OPTION; ?>[openai_model]" value="<?php echo esc_attr($s['openai_model']); ?>"><p class="description">Recommended: gpt-5-mini. Unavailable models automatically retry with gpt-5-mini.</p></td></tr>
         </table><?php submit_button(); ?></form></div><?php }
 }
 register_activation_hook(__FILE__, ['WPD_Lead_Widget', 'activate']);
